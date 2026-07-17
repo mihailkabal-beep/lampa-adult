@@ -36,6 +36,7 @@
   }
 
   function play(item) {
+    if (item.provider === 'xvideos') return resolveXvideosNative(item);
     var url = apiBase() + '/resolve?provider=' + encodeURIComponent(item.provider) +
       '&id=' + encodeURIComponent(item.id);
     network.silent(url, function (data) {
@@ -52,11 +53,75 @@
     });
   }
 
+  function decodeHtml(value) {
+    var node = document.createElement('textarea');
+    node.innerHTML = value || '';
+    return node.value;
+  }
+
+  function parseXvideos(html) {
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var cards = [];
+    var seen = {};
+    var links = doc.querySelectorAll('a[href^="/video."][title]');
+    Array.prototype.forEach.call(links, function (link) {
+      var href = link.getAttribute('href');
+      if (!href || seen[href]) return;
+      var block = link.closest ? link.closest('.thumb-block') : link.parentNode;
+      var image = block && block.querySelector ? block.querySelector('img') : null;
+      var img = image && (image.getAttribute('data-src') || image.getAttribute('src')) || '';
+      if (img.indexOf('//') === 0) img = 'https:' + img;
+      seen[href] = true;
+      cards.push({
+        id: href,
+        provider: 'xvideos',
+        title: decodeHtml(link.getAttribute('title') || link.textContent).trim(),
+        img: img,
+        url: 'https://www.xvideos.com' + href,
+        card_type: 'small'
+      });
+    });
+    return cards;
+  }
+
+  function loadXvideosNative(object, done, fail) {
+    var page = Math.max(0, Number(object.page || 1) - 1);
+    var source = object.query
+      ? 'https://www.xvideos.com/?k=' + encodeURIComponent(object.query) + '&p=' + page
+      : 'https://www.xvideos.com/new/' + page;
+    network.native(source, function (html) {
+      var results = parseXvideos(String(html || ''));
+      if (!results.length) return fail('XVideos не повернув каталог');
+      done({ results: results, page: page + 1, total_pages: 50, collection: true });
+    }, function () { fail('Нативний запит XVideos заблоковано'); });
+  }
+
+  function resolveXvideosNative(item) {
+    network.native(item.url, function (html) {
+      html = String(html || '');
+      var high = html.match(/html5player\.setVideoUrlHigh\(['"]([^'"]+)/i);
+      var low = html.match(/html5player\.setVideoUrlLow\(['"]([^'"]+)/i);
+      var hls = html.match(/html5player\.setVideoHLS\(['"]([^'"]+)/i);
+      function clean(match) {
+        return match ? match[1].replace(/\\\//g, '/').replace(/\\u0026|\\x26/g, '&') : '';
+      }
+      var quality = {};
+      if (clean(high)) quality['720p'] = clean(high);
+      if (clean(low)) quality['360p'] = clean(low);
+      if (clean(hls)) quality.HLS = clean(hls);
+      var url = quality['720p'] || quality.HLS || quality['360p'];
+      if (!url) return Lampa.Noty.show('Адресу відео не знайдено');
+      Lampa.Player.play({ title: item.title, url: url, quality: quality, poster: item.img || '' });
+      Lampa.Player.playlist([item]);
+    }, function () { Lampa.Noty.show('Не вдалося відкрити сторінку відео'); });
+  }
+
   function Catalog(object) {
     var comp = new Lampa.InteractionCategory(object);
 
     function load(done, fail) {
       var provider = object.provider || 'pornhub';
+      if (provider === 'xvideos') return loadXvideosNative(object, done, fail);
       var page = object.page || 1;
       var query = object.query || '';
       var url = apiBase() + '/list?provider=' + encodeURIComponent(provider) +
