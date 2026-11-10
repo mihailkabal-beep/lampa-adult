@@ -93,14 +93,22 @@ export interface Member {
 
 type Status = 'off' | 'connecting' | 'online' | 'error';
 
+export interface LobbyTeam {
+  teamId: string;
+  name: string;
+  at: number;
+}
+
 interface SyncCtx {
   status: Status;
   broker: string;
-  members: Member[]; // учасники моєї команди (студент) або всі (викладач), онлайн за останні 45 с
+  members: Member[]; // моя команда (студент), усі учасники (викладач / лобі), онлайн за останні 45 с
   teams: TeamSummary[]; // для викладача
+  lobby: LobbyTeam[]; // команди, створені в цьому занятті
+  createTeam: (name: string) => Promise<string | null>; // повертає teamId після підтвердження сервером
 }
 
-const Ctx = createContext<SyncCtx>({ status: 'off', broker: '', members: [], teams: [] });
+const Ctx = createContext<SyncCtx>({ status: 'off', broker: '', members: [], teams: [], lobby: [], createTeam: async () => null });
 export const useSync = () => useContext(Ctx);
 
 function keysOf(s: AppState) {
@@ -131,6 +139,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [broker, setBroker] = useState('');
   const [hb, setHb] = useState<Record<string, Member>>({});
   const [teamsMap, setTeamsMap] = useState<Record<string, TeamSummary>>({});
+  const [lobbyMap, setLobbyMap] = useState<Record<string, LobbyTeam>>({});
   const [, setTick] = useState(0);
 
   const clientRef = useRef<MqttClient | null>(null);
@@ -164,8 +173,9 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     ready.current = false;
     setHb({});
     setTeamsMap({});
+    setLobbyMap({});
 
-    const onMessage = (topic: string, buf: Uint8Array) => {
+    const onMessage = (topic: string, buf: Uint8Array, packet: { retain?: boolean }) => {
       let env: Env;
       try {
         const txt = new TextDecoder().decode(buf);
@@ -188,12 +198,24 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         lastCtrlCurrent.current = c.current;
         return;
       }
+      const lt = rel.match(/^teams\/([^/]+)$/);
+      if (lt) {
+        const v = env.v as LobbyTeam | null;
+        setLobbyMap((x) => {
+          const n = { ...x };
+          if (v?.name) n[lt[1]] = { teamId: lt[1], name: v.name, at: v.at ?? env.t };
+          else delete n[lt[1]];
+          return n;
+        });
+        return;
+      }
       const m = rel.match(/^t\/([^/]+)\/(.+)$/);
       if (!m) return;
       const [, teamId, rest] = m;
-      if (rest === 'hb') {
+      if (rest.startsWith('m/')) {
         const v = env.v as Member;
-        if (v?.id) setHb((h) => ({ ...h, [v.id]: { ...v, teamId, at: Date.now() } }));
+        // retained-сигнал — за часом відправника; живий — за часом отримання
+        if (v?.id) setHb((h) => ({ ...h, [v.id]: { ...v, teamId, at: packet.retain ? env.t : Date.now() } }));
         return;
       }
       if (rest === 'sum') {
@@ -250,7 +272,11 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         // Локальні дані не перезаписують спільні: спершу приймаємо retained-стан команди
         ready.current = false;
         for (const [k, j] of keysOf(stateRef.current)) if (!known.current.has(k)) known.current.set(k, { j, t: 0 });
-        const subs = isTeacher ? [`${base}/t/+/sum`, `${base}/t/+/hb`] : [`${base}/ctrl`, `${teamBase}/#`];
+        const subs = isTeacher
+          ? [`${base}/t/+/sum`, `${base}/t/+/m/+`, `${base}/teams/+`]
+          : teamBase
+            ? [`${base}/ctrl`, `${teamBase}/#`, `${base}/teams/+`]
+            : [`${base}/teams/+`, `${base}/t/+/m/+`]; // лобі: список команд і хто онлайн
         client!.subscribe(subs, { qos: 1 });
         window.setTimeout(() => {
           ready.current = true;
@@ -276,7 +302,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       ready.current = false;
       for (const t of timers.current.values()) window.clearTimeout(t);
       timers.current.clear();
-      client?.end(true);
+      client?.end(false); // без force: дочекатися відправки черги
       clientRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -327,7 +353,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     if (!session || isTeacher || !teamBase || status !== 'online') return;
     const send = () => {
       const s = stateRef.current;
-      publish(`${teamBase}/hb`, { t: Date.now(), by: session.clientId, v: { id: session.clientId, name: s.profile.name || 'Учасник', team: s.profile.team, teamId: session.teamId, at: Date.now() } }, false);
+      publish(`${teamBase}/m/${session.clientId}`, { t: Date.now(), by: session.clientId, v: { id: session.clientId, name: s.profile.name || 'Учасник', team: s.profile.team, teamId: session.teamId, at: Date.now() } });
     };
     send();
     const i = window.setInterval(send, 15000);
@@ -353,10 +379,30 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
   const now = Date.now();
   const members = Object.values(hb)
-    .filter((m) => now - m.at < 45000)
+    .filter((m) => now - m.at < 60000)
     .sort((a, b) => a.name.localeCompare(b.name, 'uk'));
   const teams = Object.values(teamsMap).sort((a, b) => b.total - a.total);
 
-  const value = useMemo(() => ({ status, broker, members, teams }), [status, broker, members, teams]);
+  const lobby = Object.values(lobbyMap).sort((a, b) => a.at - b.at);
+
+  const createTeam = useCallback(
+    (name: string) =>
+      new Promise<string | null>((resolve) => {
+        const clean = name.trim().slice(0, 40);
+        const c = clientRef.current;
+        if (!session || clean.length < 2 || !c || !c.connected) return resolve(null);
+        const id = teamSlug(clean);
+        if (lobbyMap[id]) return resolve(id);
+        const env: Env = { t: Date.now(), by: session.clientId, v: { name: clean, at: Date.now() } };
+        const timer = window.setTimeout(() => resolve(null), 6000);
+        c.publish(`${base}/teams/${id}`, JSON.stringify(env), { qos: 1, retain: true }, (err) => {
+          window.clearTimeout(timer);
+          resolve(err ? null : id);
+        });
+      }),
+    [session, base, lobbyMap],
+  );
+
+  const value = useMemo(() => ({ status, broker, members, teams, lobby, createTeam }), [status, broker, members, teams, lobby, createTeam]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

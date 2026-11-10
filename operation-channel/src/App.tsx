@@ -200,7 +200,9 @@ export default function App() {
   }, [state.role, view]);
 
   if (!state.role) return <Landing />;
-  const View = VIEWS[state.current] ?? M1Intro;
+  // студент в онлайн-занятті ще не обрав команду — показуємо лобі (модуль 1)
+  const inLobby = state.role !== 'teacher' && !!state.session && !state.session.teamId;
+  const View = inLobby ? M1Intro : VIEWS[state.current] ?? M1Intro;
 
   return (
     <div className="min-h-screen pb-[env(safe-area-inset-bottom)]">

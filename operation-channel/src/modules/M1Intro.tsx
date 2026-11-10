@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, ChevronRight, Power, Radio, Target, UserRound, Users, Wifi, WifiOff, Zap } from 'lucide-react';
 import { useApp } from '../lib/store';
-import { codeFromUrl, makeId, normCode, teamSlug } from '../lib/sync';
+import { codeFromUrl, makeId, normCode } from '../lib/sync';
+import TeamLobby from '../components/TeamLobby';
 import { Btn, Input, ModuleHeader, Panel, Select, Tag, cx } from '../components/ui';
 
 const BOOT_LINES = [
@@ -32,7 +33,9 @@ export default function M1Intro() {
   const p = state.profile;
   const [code, setCode] = useState(state.session?.code ?? codeFromUrl());
   const setP = (k: keyof typeof p, v: string) => update((s) => ({ ...s, profile: { ...s.profile, [k]: v } }));
-  const ready = p.name.trim().length >= 2 && p.group && p.team.trim().length >= 2;
+  const online = !!normCode(code) && state.role !== 'teacher';
+  const ready = p.name.trim().length >= 2 && !!p.group && (online || p.team.trim().length >= 2);
+  const inLobby = state.role !== 'teacher' && !!state.session && !state.session.teamId;
 
   if (phase === 'cover') {
     return (
@@ -150,53 +153,61 @@ export default function M1Intro() {
           </div>
         </Panel>
 
-        <Panel title="Реєстрація оператора" icon={<UserRound className="h-4 w-4 text-signal" />} className="lg:col-span-2">
-          <div className="space-y-4">
-            <Input label="Ім’я та прізвище" value={p.name} onChange={(v) => setP('name', v)} placeholder="Напр., Олена Коваль" max={60} />
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">Група</span>
-              <Select
-                value={p.group}
-                onChange={(v) => setP('group', v)}
-                options={['31', '32', '41'].map((g) => ({ value: g, label: `Група ${g}` }))}
-              />
-            </label>
-            <Input label="Позивний команди" value={p.team} onChange={(v) => setP('team', v)} placeholder="Напр., «Пакет-7»" max={40} />
-            <p className="text-xs text-slate-500">Позивний — умовна назва команди. Учасники однієї команди вводять <b>однаковий</b> позивний.</p>
-            {state.role !== 'teacher' && (
-              <div className="rounded-lg border border-info/40 bg-info/5 p-3">
-                <Input label="Код онлайн-заняття (від викладача)" value={code} onChange={(v) => setCode(normCode(v))} placeholder="Напр., K7M2QX" max={12} />
-                <p className="mt-1.5 text-xs text-slate-400">
-                  З кодом ви працюєте <b className="text-slate-200">разом із командою наживо</b>: спільні відповіді, спільний протокол, викладач бачить прогрес. Без коду — самостійне проходження.
-                  Вводьте лише ім’я (без прізвища): онлайн-режим використовує публічний сервер.
-                </p>
+        <div className="order-first lg:order-none lg:col-span-2">
+          {inLobby ? (
+            <TeamLobby />
+          ) : (
+            <Panel title="Реєстрація оператора" icon={<UserRound className="h-4 w-4 text-signal" />}>
+              <div className="space-y-4">
+                {state.role !== 'teacher' && (
+                  <div className="rounded-lg border border-info/40 bg-info/5 p-3">
+                    <Input label="Код онлайн-заняття (від викладача)" value={code} onChange={(v) => setCode(normCode(v))} placeholder="Напр., K7M2QX" max={12} />
+                    <p className="mt-1.5 text-xs text-slate-400">
+                      З кодом ви працюєте <b className="text-slate-200">разом із командою наживо</b> й самі обираєте або створюєте команду. Без коду — самостійне проходження.
+                    </p>
+                  </div>
+                )}
+                <Input label={online ? 'Ваше ім’я (без прізвища)' : 'Ім’я та прізвище'} value={p.name} onChange={(v) => setP('name', v)} placeholder={online ? 'Напр., Олена' : 'Напр., Олена Коваль'} max={60} />
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">Група</span>
+                  <Select value={p.group} onChange={(v) => setP('group', v)} options={['31', '32', '41'].map((g) => ({ value: g, label: `Група ${g}` }))} />
+                </label>
+                {!online && (
+                  <>
+                    <Input label="Позивний команди" value={p.team} onChange={(v) => setP('team', v)} placeholder="Напр., «Пакет-7»" max={40} />
+                    <p className="text-xs text-slate-500">Позивний — умовна назва команди, потрапляє у звіт і рейтинг.</p>
+                  </>
+                )}
+                {online && <p className="text-xs text-slate-500">Онлайн-режим використовує безкоштовний публічний сервер — вводьте лише ім’я.</p>}
+                <Btn
+                  className="w-full"
+                  disabled={!ready}
+                  onClick={() => {
+                    if (online) {
+                      const c = normCode(code);
+                      update((s) => ({ ...s, session: { code: c, teamId: '', clientId: s.session?.clientId ?? makeId() } }));
+                      return; // далі — лобі команд
+                    }
+                    update((s) => ({ ...s, started: true, session: s.role === 'teacher' ? s.session : null }));
+                    go('m2');
+                  }}
+                >
+                  {online ? 'Далі: обрати або створити команду' : 'Підтвердити й перейти до модуля 2'} <ChevronRight className="h-4 w-4" />
+                </Btn>
+                {!ready && <p className="text-xs text-slate-500">Заповніть {online ? 'ім’я та групу' : 'ім’я, групу та позивний команди'}.</p>}
+                {state.session?.teamId && state.role !== 'teacher' && (
+                  <Btn
+                    variant="ghost"
+                    className="w-full"
+                    onClick={() => update((s) => ({ ...s, session: s.session ? { ...s.session, teamId: '' } : null }))}
+                  >
+                    Змінити команду (зараз: «{p.team}»)
+                  </Btn>
+                )}
               </div>
-            )}
-            <Btn
-              className="w-full"
-              disabled={!ready}
-              onClick={() => {
-                const c = normCode(code);
-                if (c && state.role !== 'teacher') {
-                  update((s) => ({
-                    ...s,
-                    started: true,
-                    session: { code: c, teamId: teamSlug(s.profile.team), clientId: s.session?.clientId ?? makeId() },
-                    // спільний стан команди надійде з сервера
-                    answers: s.session?.code === c ? s.answers : {},
-                    results: s.session?.code === c ? s.results : {},
-                  }));
-                } else {
-                  update((s) => ({ ...s, started: true, session: s.role === 'teacher' ? s.session : null }));
-                }
-                go('m2');
-              }}
-            >
-              {normCode(code) && state.role !== 'teacher' ? 'Приєднатися до команди' : 'Підтвердити й перейти до модуля 2'} <ChevronRight className="h-4 w-4" />
-            </Btn>
-            {!ready && <p className="text-xs text-slate-500">Заповніть ім’я, групу та позивний команди.</p>}
-          </div>
-        </Panel>
+            </Panel>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -95,13 +95,16 @@ export default function TeacherPanel({ onShowLesson }: { onShowLesson: () => voi
     if ((Object.keys(state.results).length || state.profile.name) && !alreadyImported) {
       out.push({ key: 'local', name: state.profile.name || 'Цей пристрій', group: state.profile.group, team: state.profile.team || '—', auto: moduleScores({ ...state, manual: {} }), local: true });
     }
-    for (const t of sync.teams) {
+    const zero = { m2: 0, m3: 0, m4: 0, m5: 0, m6: 0, m7: 0 } as Record<ScoredModule, number>;
+    const allTeams = [...sync.teams];
+    for (const l of sync.lobby) if (!allTeams.some((t) => t.teamId === l.teamId)) allTeams.push({ teamId: l.teamId, team: l.name, scores: zero, total: 0, done: 0, at: l.at });
+    for (const t of allTeams) {
       const names = sync.members.filter((m) => m.teamId === t.teamId).map((m) => m.name);
       out.push({ key: `team:${t.teamId}`, name: `Команда «${t.team}»`, group: names.length ? `онлайн: ${names.join(', ')}` : 'офлайн', team: t.team || '—', auto: t.scores });
     }
     for (const e of state.imported) out.push({ key: participantKey(e), name: e.profile.name, group: e.profile.group, team: e.profile.team || '—', auto: e.modules, imported: e });
     return out;
-  }, [state, sync.teams, sync.members]);
+  }, [state, sync.teams, sync.members, sync.lobby]);
 
   const scoreOf = (r: Row) => {
     const m = state.manual[r.key] ?? {};
@@ -214,7 +217,7 @@ export default function TeacherPanel({ onShowLesson }: { onShowLesson: () => voi
         {!state.session ? (
           <div className="flex flex-wrap items-center gap-4">
             <p className="max-w-2xl text-sm text-slate-300">
-              Створіть код заняття. Студенти відкривають посилання, вводять ім’я та позивний команди — учасники з однаковим позивним бачать відповіді одне одного наживо й разом заповнюють протокол. Ви бачите прогрес і бали команд, а ваші таймер, етапи й ситуації симуляції з’являються в усіх.
+              Створіть код заняття. Студенти відкривають посилання, вводять ім’я і самі створюють команди або приєднуються до наявних — у команді вони бачать відповіді одне одного наживо й разом заповнюють протокол. Ви бачите прогрес і бали команд, а ваші таймер, етапи й ситуації симуляції з’являються в усіх.
             </p>
             <Btn onClick={() => update((s) => ({ ...s, session: { code: makeCode(), teamId: '', clientId: makeId(), follow: true } }))}>
               <Wifi className="h-4 w-4" /> Створити онлайн-заняття
@@ -245,7 +248,7 @@ export default function TeacherPanel({ onShowLesson }: { onShowLesson: () => voi
                 {sync.status === 'online' ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4 animate-blink" />}
                 {sync.status === 'online' ? 'Сервер на зв’язку' : sync.status === 'error' ? 'Помилка з’єднання, повторюю…' : 'Підключення…'}
               </span>
-              <span className="text-slate-400">Учасників онлайн: <b className="text-white">{sync.members.length}</b> · команд: <b className="text-white">{sync.teams.length}</b></span>
+              <span className="text-slate-400">Учасників онлайн: <b className="text-white">{sync.members.length}</b> · команд: <b className="text-white">{Math.max(sync.teams.length, sync.lobby.length)}</b></span>
               <label className="flex cursor-pointer items-center gap-2 text-slate-300">
                 <input type="checkbox" className="h-4 w-4 accent-[#2ee6c5]" checked={!!state.session.follow} onChange={(e) => update((s) => ({ ...s, session: s.session ? { ...s.session, follow: e.target.checked } : null }))} />
                 Студенти автоматично переходять на модуль, який відкриваю я
