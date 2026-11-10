@@ -1,4 +1,4 @@
-import { type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { type ButtonHTMLAttributes, type ReactNode, useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, Check, ChevronRight, CircleAlert, Info, Lock, RotateCcw, Send, X } from 'lucide-react';
 import { moduleProgress, useApp } from '../lib/store';
 import { MODULES, TASKS } from '../lib/config';
@@ -487,5 +487,38 @@ export function NextModule({ to }: { to: ModuleId }) {
       </Btn>
       {locked && <span className="text-xs text-slate-500">Наступний етап відкриє викладач.</span>}
     </div>
+  );
+}
+
+/** Чи відкрито застосунок усередині вбудованого фрейму (там друк і завантаження файлів можуть бути заблоковані). */
+export const EMBEDDED = (() => {
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+})();
+
+/** Кнопка з підтвердженням другим натисканням (без системного confirm(), який блокують вбудовані фрейми). */
+export function ConfirmBtn({ onConfirm, children, confirmText = 'Натисніть ще раз для підтвердження', ...rest }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onClick'> & { onConfirm: () => void; confirmText?: string; variant?: BtnVariant; size?: 'sm' | 'md' | 'lg' }) {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), 4000);
+    return () => clearTimeout(t);
+  }, [armed]);
+  return (
+    <Btn
+      {...rest}
+      variant={armed ? 'warn' : rest.variant ?? 'danger'}
+      onClick={() => {
+        if (armed) {
+          setArmed(false);
+          onConfirm();
+        } else setArmed(true);
+      }}
+    >
+      {armed ? confirmText : children}
+    </Btn>
   );
 }

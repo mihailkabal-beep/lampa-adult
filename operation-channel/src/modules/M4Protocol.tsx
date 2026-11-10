@@ -3,7 +3,7 @@ import { CheckCircle2, Circle, ClipboardCopy, Download, FileText, Pencil, Plus, 
 import { ROLE_KEYS, SIGNAL_KEYS, useApp } from '../lib/store';
 import type { Protocol } from '../lib/types';
 import { copyText, downloadFile, printElement, protocolToText, safeName } from '../lib/export';
-import { Btn, Input, ModuleHeader, NextModule, Panel, ScoreBadge, Select, Tag, TextArea, cx } from '../components/ui';
+import { Btn, EMBEDDED, Input, ModuleHeader, NextModule, Panel, ScoreBadge, Select, Tag, TextArea, cx } from '../components/ui';
 import { toast } from '../components/Toaster';
 
 const FORMS = ['Кодове слово', 'Текст', 'Емодзі', 'Колір', 'Жест', 'Звук'];
@@ -382,19 +382,27 @@ export default function M4Protocol() {
               >
                 <ClipboardCopy className="h-4 w-4" /> Копіювати
               </Btn>
-              <Btn size="sm" variant="ghost" onClick={() => downloadFile(`protocol_${safeName(p.teamName)}.txt`, protocolToText(p))}>
-                <Download className="h-4 w-4" /> .txt
-              </Btn>
-              <Btn size="sm" variant="ghost" onClick={() => printElement(cardRef.current)}>
-                <Printer className="h-4 w-4" /> Друк / PDF
-              </Btn>
+              {!EMBEDDED && (
+                <>
+                  <Btn size="sm" variant="ghost" onClick={() => downloadFile(`protocol_${safeName(p.teamName)}.txt`, protocolToText(p))}>
+                    <Download className="h-4 w-4" /> .txt
+                  </Btn>
+                  <Btn size="sm" variant="ghost" onClick={() => printElement(cardRef.current)}>
+                    <Printer className="h-4 w-4" /> Друк / PDF
+                  </Btn>
+                </>
+              )}
             </div>
           }
         >
           <div ref={cardRef}>
             <ProtocolCard p={p} />
           </div>
-          <p className="no-print mt-3 text-xs text-slate-500">PDF: натисніть «Друк / PDF» і в діалозі оберіть принтер «Зберегти як PDF».</p>
+          <p className="no-print mt-3 text-xs text-slate-500">
+            {EMBEDDED
+              ? 'У цьому вбудованому перегляді друк і завантаження файлів недоступні: скопіюйте текст або відкрийте офлайн-версію застосунку.'
+              : 'PDF: натисніть «Друк / PDF» і в діалозі оберіть принтер «Зберегти як PDF».'}
+          </p>
         </Panel>
       </div>
       <NextModule to="m5" />

@@ -81,7 +81,7 @@ function Header({ view, setView }: { view: 'lesson' | 'teacher'; setView: (v: 'l
   const stressed = state.current === 'm5' || state.current === 'm6';
   const isTeacher = state.role === 'teacher';
   return (
-    <header className="no-print sticky top-0 z-40 border-b border-ink-600/70 bg-ink-950/90 backdrop-blur">
+    <header style={{ top: 'env(safe-area-inset-top, 0px)' }} className="no-print sticky z-40 border-b border-ink-600/70 bg-ink-950/90 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-2.5">
         <button type="button" onClick={() => setView('lesson')} className="flex items-center gap-2.5 text-left">
           <span className="relative flex h-8 w-8 items-center justify-center rounded-lg border border-signal/50 bg-ink-900">

@@ -1,9 +1,9 @@
 import { useRef } from 'react';
-import { Award, CheckCircle2, ClipboardCopy, Download, Printer, RotateCcw, XCircle } from 'lucide-react';
+import { Award, CheckCircle2, ClipboardCopy, KeyRound, Download, Printer, RotateCcw, XCircle } from 'lucide-react';
 import { moduleScores, total, useApp } from '../lib/store';
 import { MODULES, TASKS, rankFor } from '../lib/config';
 import { buildExport, copyText, downloadFile, printElement, resultToText, safeName } from '../lib/export';
-import { Btn, Explain, Panel, Tag, cx } from '../components/ui';
+import { Btn, ConfirmBtn, EMBEDDED, Explain, Panel, Tag, cx } from '../components/ui';
 import { toast } from '../components/Toaster';
 import type { ScoredModule } from '../lib/types';
 
@@ -118,18 +118,29 @@ export default function Results() {
 
       <Panel title="Надіслати результат викладачу" className="no-print mt-6">
         <p className="mb-4 text-sm text-slate-300">
-          Застосунок працює без сервера, тож результат передається файлом. Завантажте файл і надішліть його в чат заняття (Teams / Meet) —
-          викладач імпортує його у свою панель. Або скопіюйте короткий текстовий звіт.
+          Застосунок працює без сервера, тож результат передається файлом. Завантажте файл або скопіюйте код результату й надішліть у чат заняття (Teams / Meet) —
+          викладач імпортує його у свою панель. Короткий текстовий звіт зручно вставити в чат для всіх.
         </p>
         <div className="flex flex-wrap gap-2">
+          {!EMBEDDED && (
+            <Btn
+              onClick={() => {
+                const e = buildExport(state);
+                const ok = downloadFile(`result_${safeName(state.profile.team)}_${safeName(state.profile.name)}.json`, JSON.stringify(e, null, 2), 'application/json');
+                toast(ok ? 'Файл результату завантажено' : 'Не вдалося створити файл', ok);
+              }}
+            >
+              <Download className="h-4 w-4" /> Файл результату (.json)
+            </Btn>
+          )}
           <Btn
-            onClick={() => {
-              const e = buildExport(state);
-              const ok = downloadFile(`result_${safeName(state.profile.team)}_${safeName(state.profile.name)}.json`, JSON.stringify(e, null, 2), 'application/json');
-              toast(ok ? 'Файл результату завантажено' : 'Не вдалося створити файл', ok);
+            variant={EMBEDDED ? 'primary' : 'ghost'}
+            onClick={async () => {
+              const ok = await copyText(JSON.stringify(buildExport(state)));
+              toast(ok ? 'Код результату скопійовано — вставте його в чат заняття' : 'Не вдалося скопіювати', ok);
             }}
           >
-            <Download className="h-4 w-4" /> Файл результату (.json)
+            <KeyRound className="h-4 w-4" /> Копіювати код результату
           </Btn>
           <Btn
             variant="ghost"
@@ -140,20 +151,20 @@ export default function Results() {
           >
             <ClipboardCopy className="h-4 w-4" /> Копіювати текстовий звіт
           </Btn>
-          <Btn variant="ghost" onClick={() => printElement(ref.current)}>
-            <Printer className="h-4 w-4" /> Друк / PDF
-          </Btn>
-          <Btn
-            variant="danger"
-            onClick={() => {
-              if (window.confirm('Почати операцію заново? Увесь прогрес на цьому пристрої буде видалено.')) {
-                resetAll();
-                toast('Прогрес скинуто');
-              }
+          {!EMBEDDED && (
+            <Btn variant="ghost" onClick={() => printElement(ref.current)}>
+              <Printer className="h-4 w-4" /> Друк / PDF
+            </Btn>
+          )}
+          <ConfirmBtn
+            confirmText="Видалити прогрес? Натисніть ще раз"
+            onConfirm={() => {
+              resetAll();
+              toast('Прогрес скинуто');
             }}
           >
             <RotateCcw className="h-4 w-4" /> Пройти заново
-          </Btn>
+          </ConfirmBtn>
         </div>
       </Panel>
     </div>

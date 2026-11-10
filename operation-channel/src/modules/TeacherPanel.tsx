@@ -8,7 +8,7 @@ import { buildExport, downloadFile, parseImported, participantKey } from '../lib
 import type { ExportedResult, ModuleId, ScoredModule } from '../lib/types';
 import { CARDS } from '../components/SituationCards';
 import { TimerBadge, remainingOf } from '../components/Timer';
-import { Btn, Panel, Tag, cx } from '../components/ui';
+import { Btn, ConfirmBtn, EMBEDDED, Panel, Tag, cx } from '../components/ui';
 import { toast } from '../components/Toaster';
 
 interface Row {
@@ -83,6 +83,7 @@ export default function TeacherPanel({ onShowLesson }: { onShowLesson: () => voi
   const { state, patch, update, go, resetAll } = useApp();
   const fileRef = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState<string | null>(null);
+  const [paste, setPaste] = useState('');
   const curIdx = MODULES.findIndex((m) => m.id === state.current);
 
   const rows: Row[] = useMemo(() => {
@@ -140,6 +141,26 @@ export default function TeacherPanel({ onShowLesson }: { onShowLesson: () => voi
     toast(`Етап «${MODULES[i].short}» завершено`);
   };
 
+  const addResults = (list: ExportedResult[]) =>
+    update((s) => {
+      const map = new Map(s.imported.map((e) => [participantKey(e), e]));
+      for (const e of list) map.set(participantKey(e), e);
+      return { ...s, imported: [...map.values()] };
+    });
+
+  const onPaste = () => {
+    // Кілька кодів можна вставити підряд: шукаємо всі JSON-об'єкти верхнього рівня
+    const chunks = paste.match(/\{"app":"operation-yedynyi-kanal"[\s\S]*?\}(?=\s*(\{"app"|$))/g) ?? [paste.trim()];
+    const list = chunks.map((c) => parseImported(c.trim())).filter((e): e is ExportedResult => !!e);
+    if (!list.length) {
+      toast('Код не розпізнано. Вставте код, скопійований кнопкою «Копіювати код результату».', false);
+      return;
+    }
+    addResults(list);
+    setPaste('');
+    toast(`Додано результатів: ${list.length}`);
+  };
+
   const onImport = async (files: FileList | null) => {
     if (!files?.length) return;
     let ok = 0;
@@ -156,11 +177,7 @@ export default function TeacherPanel({ onShowLesson }: { onShowLesson: () => voi
         bad++;
       }
     }
-    update((s) => {
-      const map = new Map(s.imported.map((e) => [participantKey(e), e]));
-      for (const e of list) map.set(participantKey(e), e);
-      return { ...s, imported: [...map.values()] };
-    });
+    addResults(list);
     toast(`Імпортовано: ${ok}${bad ? `, відхилено: ${bad} (не той формат)` : ''}`, bad === 0);
     if (fileRef.current) fileRef.current.value = '';
   };
@@ -288,12 +305,14 @@ export default function TeacherPanel({ onShowLesson }: { onShowLesson: () => voi
         right={
           <div className="flex flex-wrap gap-2">
             <input ref={fileRef} type="file" accept=".json,application/json" multiple className="hidden" onChange={(e) => onImport(e.target.files)} />
-            <Btn size="sm" onClick={() => fileRef.current?.click()}>
+            <Btn size="sm" variant={EMBEDDED ? 'ghost' : 'primary'} onClick={() => fileRef.current?.click()}>
               <FileUp className="h-4 w-4" /> Імпорт файлів
             </Btn>
-            <Btn size="sm" variant="ghost" disabled={!rows.length} onClick={exportCsv}>
-              <FileDown className="h-4 w-4" /> CSV
-            </Btn>
+            {!EMBEDDED && (
+              <Btn size="sm" variant="ghost" disabled={!rows.length} onClick={exportCsv}>
+                <FileDown className="h-4 w-4" /> CSV
+              </Btn>
+            )}
             {state.demo && (
               <Btn size="sm" variant="ghost" onClick={() => update((s) => ({ ...s, imported: [...s.imported.filter((e) => !e.profile.name.startsWith('Демо')), ...demoResults()] }))}>
                 <Plus className="h-4 w-4" /> Демо-учасники
@@ -302,9 +321,22 @@ export default function TeacherPanel({ onShowLesson }: { onShowLesson: () => voi
           </div>
         }
       >
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+          <textarea
+            id="paste-result"
+            className="field min-h-[2.75rem] font-mono text-xs"
+            rows={2}
+            value={paste}
+            onChange={(e) => setPaste(e.target.value)}
+            placeholder="Вставте сюди код результату студента (можна кілька поспіль)"
+          />
+          <Btn className="shrink-0" disabled={!paste.trim()} onClick={onPaste}>
+            <Plus className="h-4 w-4" /> Додати код
+          </Btn>
+        </div>
         {rows.length === 0 ? (
           <p className="text-sm text-slate-400">
-            Поки немає результатів. Студенти завершують операцію → «Файл результату (.json)» → надсилають у чат заняття. Ви завантажуєте файли й імпортуєте їх тут (можна кілька одночасно).
+            Поки немає результатів. Студенти на екрані «Підсумок» копіюють код результату (або завантажують файл .json) і надсилають у чат заняття. Вставте коди в поле вище або імпортуйте файли.
             {state.demo && ' У демо-режимі натисніть «Демо-учасники», щоб побачити, як виглядає таблиця.'}
           </p>
         ) : (
@@ -446,12 +478,12 @@ export default function TeacherPanel({ onShowLesson }: { onShowLesson: () => voi
 
       <Panel title="Скидання" tone="alert">
         <div className="flex flex-wrap gap-2">
-          <Btn variant="danger" onClick={() => { if (window.confirm('Скинути прогрес на цьому пристрої? Імпортовані результати збережуться.')) { resetAll(true); toast('Прогрес скинуто'); } }}>
+          <ConfirmBtn confirmText="Скинути? Натисніть ще раз" onConfirm={() => { resetAll(true); toast('Прогрес скинуто, імпортовані результати збережено'); }}>
             <RotateCcw className="h-4 w-4" /> Скинути прогрес заняття
-          </Btn>
-          <Btn variant="danger" onClick={() => { if (window.confirm('Видалити ВСЕ, включно з імпортованими результатами і ручними балами?')) { resetAll(false); toast('Усі дані видалено'); } }}>
+          </ConfirmBtn>
+          <ConfirmBtn confirmText="Видалити все? Натисніть ще раз" onConfirm={() => { resetAll(false); toast('Усі дані видалено'); }}>
             <Trash2 className="h-4 w-4" /> Видалити всі дані
-          </Btn>
+          </ConfirmBtn>
         </div>
       </Panel>
     </div>
