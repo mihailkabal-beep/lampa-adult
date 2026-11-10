@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; color-scheme: dark; }
+  body {
+    @apply bg-ink-950 font-sans text-slate-200 antialiased;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(46, 230, 197, 0.08), transparent 60%),
+      linear-gradient(rgba(90, 169, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(90, 169, 255, 0.035) 1px, transparent 1px);
+    background-size: 100% 100%, 32px 32px, 32px 32px;
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+  ::selection { background: rgba(46, 230, 197, 0.35); }
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded-lg border border-ink-600 bg-ink-900/80 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 transition focus:border-signal focus:outline-none focus:ring-2 focus:ring-signal/25 disabled:opacity-60;
+  }
+  select.field { @apply pr-8; }
+  .hud-corners::before, .hud-corners::after {
+    content: ''; position: absolute; width: 10px; height: 10px; pointer-events: none;
+    border-color: rgba(46, 230, 197, 0.55);
+  }
+  .hud-corners::before { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; border-top-left-radius: 10px; }
+  .hud-corners::after { bottom: -1px; right: -1px; border-bottom: 2px solid; border-right: 2px solid; border-bottom-right-radius: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
+/* Друк: показуємо лише активну область .print-area (протокол або звіт). */
+@media print {
+  @page { margin: 14mm; }
+  body { background: #fff !important; color: #000 !important; }
+  body * { visibility: hidden !important; }
+  .print-area, .print-area * { visibility: visible !important; }
+  .print-area { position: absolute; inset: 0 auto auto 0; width: 100%; color: #000 !important; background: #fff !important; border: none !important; box-shadow: none !important; }
+  .print-area * { color: #000 !important; background: transparent !important; border-color: #999 !important; box-shadow: none !important; }
+  .no-print { display: none !important; }
+}
