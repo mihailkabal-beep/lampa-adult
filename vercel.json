@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "cd operation-channel && npm ci",
+  "buildCommand": "cd operation-channel && npm run build",
+  "outputDirectory": "operation-channel/dist"
+}
