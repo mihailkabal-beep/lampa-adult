@@ -59,6 +59,13 @@ export interface ExportedResult {
   reflection: Record<string, string>;
 }
 
+export interface LiveSession {
+  code: string; // код онлайн-заняття
+  teamId: string; // '' для викладача
+  clientId: string;
+  follow?: boolean; // викладач: студенти слідують за його екраном
+}
+
 export interface AppState {
   v: 3;
   role: 'student' | 'teacher' | null;
@@ -77,4 +84,5 @@ export interface AppState {
   card: string | null;
   imported: ExportedResult[];
   protocol: Protocol;
+  session: LiveSession | null;
 }

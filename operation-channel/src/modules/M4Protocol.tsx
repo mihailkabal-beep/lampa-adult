@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { CheckCircle2, Circle, ClipboardCopy, Download, FileText, Pencil, Plus, Printer, Save, Trash2 } from 'lucide-react';
 import { ROLE_KEYS, SIGNAL_KEYS, useApp } from '../lib/store';
+import { useSync } from '../lib/sync';
 import type { Protocol } from '../lib/types';
 import { copyText, downloadFile, printElement, protocolToText, safeName } from '../lib/export';
 import { Btn, EMBEDDED, Input, ModuleHeader, NextModule, Panel, ScoreBadge, Select, Tag, TextArea, cx } from '../components/ui';
@@ -129,6 +130,7 @@ function ProtocolCard({ p }: { p: Protocol }) {
 
 export default function M4Protocol() {
   const { state, update, submit, resetTask } = useApp();
+  const sync = useSync();
   const p = state.protocol;
   const r = state.results['m4.protocol'];
   const locked = !!r;
@@ -152,6 +154,7 @@ export default function M4Protocol() {
       <ModuleHeader index={4} title="Створи протокол зв’язку" codename="BUILD" minutes={20} max={25}>
         Спроєктуйте власний «API» комунікації для цивільної команди: хто за що відповідає, які сигнали використовуєте, як виглядає
         стандартне повідомлення і що робити, коли основний канал падає. Результат — цифрова картка команди.
+        {state.session && ' В онлайн-заняття протокол спільний: зміни кожного учасника команди одразу бачать усі.'}
       </ModuleHeader>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
@@ -177,6 +180,11 @@ export default function M4Protocol() {
                   )}
                 </div>
               ))}
+              {!locked && state.session && sync.members.length > 0 && (
+                <Btn variant="ghost" size="sm" onClick={() => set((x) => ({ ...x, members: sync.members.map((m) => m.name).slice(0, 8) }))}>
+                  <Plus className="h-4 w-4" /> Підставити учасників онлайн ({sync.members.length})
+                </Btn>
+              )}
               {!locked && p.members.length < 8 && (
                 <Btn variant="ghost" size="sm" onClick={() => set((x) => ({ ...x, members: [...x.members, ''] }))}>
                   <Plus className="h-4 w-4" /> Додати учасника

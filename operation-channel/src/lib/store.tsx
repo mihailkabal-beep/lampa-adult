@@ -52,6 +52,7 @@ export function initialState(): AppState {
     card: null,
     imported: [],
     protocol: emptyProtocol(),
+    session: null,
   };
 }
 
@@ -135,7 +136,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setState((s) => {
         const manual = { ...s.manual };
         delete manual.local;
-        return { ...initialState(), role: s.role, demo: s.demo, imported: keepImported ? s.imported : [], manual: keepImported ? manual : {} };
+        return { ...initialState(), role: s.role, demo: s.demo, session: s.role === 'teacher' ? s.session : null, imported: keepImported ? s.imported : [], manual: keepImported ? manual : {} };
       }),
     [],
   );

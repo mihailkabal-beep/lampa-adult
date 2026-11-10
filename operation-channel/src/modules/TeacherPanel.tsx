@@ -1,10 +1,11 @@
 import { useMemo, useRef, useState } from 'react';
 import {
-  BarChart3, ChevronRight, Eye, EyeOff, FileDown, FileUp, Gauge, Layers, MonitorPlay, Pause, Play, Plus, RotateCcw, Square, Timer as TimerIcon, Trash2, Trophy, Users,
+  BarChart3, ChevronRight, Copy, Link2, Radio, Wifi, WifiOff, Eye, EyeOff, FileDown, FileUp, Gauge, Layers, MonitorPlay, Pause, Play, Plus, RotateCcw, Square, Timer as TimerIcon, Trash2, Trophy, Users,
 } from 'lucide-react';
 import { moduleScores, total, useApp } from '../lib/store';
 import { MODULES, SCORED, rankFor } from '../lib/config';
-import { buildExport, downloadFile, parseImported, participantKey } from '../lib/export';
+import { buildExport, copyText, downloadFile, parseImported, participantKey } from '../lib/export';
+import { joinLink, makeCode, makeId, useSync } from '../lib/sync';
 import type { ExportedResult, ModuleId, ScoredModule } from '../lib/types';
 import { CARDS } from '../components/SituationCards';
 import { TimerBadge, remainingOf } from '../components/Timer';
@@ -85,6 +86,7 @@ export default function TeacherPanel({ onShowLesson }: { onShowLesson: () => voi
   const [editing, setEditing] = useState<string | null>(null);
   const [paste, setPaste] = useState('');
   const curIdx = MODULES.findIndex((m) => m.id === state.current);
+  const sync = useSync();
 
   const rows: Row[] = useMemo(() => {
     const out: Row[] = [];
@@ -93,9 +95,13 @@ export default function TeacherPanel({ onShowLesson }: { onShowLesson: () => voi
     if ((Object.keys(state.results).length || state.profile.name) && !alreadyImported) {
       out.push({ key: 'local', name: state.profile.name || 'Цей пристрій', group: state.profile.group, team: state.profile.team || '—', auto: moduleScores({ ...state, manual: {} }), local: true });
     }
+    for (const t of sync.teams) {
+      const names = sync.members.filter((m) => m.teamId === t.teamId).map((m) => m.name);
+      out.push({ key: `team:${t.teamId}`, name: `Команда «${t.team}»`, group: names.length ? `онлайн: ${names.join(', ')}` : 'офлайн', team: t.team || '—', auto: t.scores });
+    }
     for (const e of state.imported) out.push({ key: participantKey(e), name: e.profile.name, group: e.profile.group, team: e.profile.team || '—', auto: e.modules, imported: e });
     return out;
-  }, [state]);
+  }, [state, sync.teams, sync.members]);
 
   const scoreOf = (r: Row) => {
     const m = state.manual[r.key] ?? {};
@@ -196,13 +202,71 @@ export default function TeacherPanel({ onShowLesson }: { onShowLesson: () => voi
           <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-signal">Командний пункт викладача</div>
           <h2 className="text-3xl font-bold text-white">Панель керування заняттям</h2>
           <p className="mt-1 max-w-3xl text-sm text-slate-400">
-            Керуйте етапами й таймером на цьому екрані (його можна демонструвати в Teams / Meet). Студенти працюють у своїх браузерах і надсилають файли результатів — імпортуйте їх нижче.
+            Керуйте етапами й таймером (екран можна демонструвати в Teams / Meet). В онлайн-занятті команди працюють разом, а прогрес видно тут наживо; у самостійному режимі студенти надсилають коди результатів — додайте їх нижче.
           </p>
         </div>
         <Btn onClick={onShowLesson}>
           <MonitorPlay className="h-4 w-4" /> Екран заняття
         </Btn>
       </div>
+
+      <Panel title="Онлайн-заняття: команди працюють разом" icon={<Radio className="h-4 w-4 text-signal" />} tone={state.session ? 'signal' : 'default'}>
+        {!state.session ? (
+          <div className="flex flex-wrap items-center gap-4">
+            <p className="max-w-2xl text-sm text-slate-300">
+              Створіть код заняття. Студенти відкривають посилання, вводять ім’я та позивний команди — учасники з однаковим позивним бачать відповіді одне одного наживо й разом заповнюють протокол. Ви бачите прогрес і бали команд, а ваші таймер, етапи й ситуації симуляції з’являються в усіх.
+            </p>
+            <Btn onClick={() => update((s) => ({ ...s, session: { code: makeCode(), teamId: '', clientId: makeId(), follow: true } }))}>
+              <Wifi className="h-4 w-4" /> Створити онлайн-заняття
+            </Btn>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <div>
+                <div className="font-mono text-[11px] uppercase tracking-wider text-slate-400">Код заняття</div>
+                <div className="font-mono text-4xl font-black tracking-[0.2em] text-signal">{state.session.code}</div>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="font-mono text-[11px] uppercase tracking-wider text-slate-400">Посилання для студентів</div>
+                <div className="break-all font-mono text-sm text-slate-200">{joinLink(state.session.code)}</div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Btn size="sm" onClick={async () => { const ok = await copyText(joinLink(state.session!.code)); toast(ok ? 'Посилання скопійовано — надішліть його в чат заняття' : 'Не вдалося скопіювати', ok); }}>
+                  <Link2 className="h-4 w-4" /> Копіювати посилання
+                </Btn>
+                <Btn size="sm" variant="ghost" onClick={async () => { const ok = await copyText(state.session!.code); toast(ok ? 'Код скопійовано' : 'Не вдалося скопіювати', ok); }}>
+                  <Copy className="h-4 w-4" /> Код
+                </Btn>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 border-t border-ink-600/60 pt-3 text-sm">
+              <span className={cx('flex items-center gap-1.5 font-mono text-xs', sync.status === 'online' ? 'text-signal' : 'text-warn')}>
+                {sync.status === 'online' ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4 animate-blink" />}
+                {sync.status === 'online' ? 'Сервер на зв’язку' : sync.status === 'error' ? 'Помилка з’єднання, повторюю…' : 'Підключення…'}
+              </span>
+              <span className="text-slate-400">Учасників онлайн: <b className="text-white">{sync.members.length}</b> · команд: <b className="text-white">{sync.teams.length}</b></span>
+              <label className="flex cursor-pointer items-center gap-2 text-slate-300">
+                <input type="checkbox" className="h-4 w-4 accent-[#2ee6c5]" checked={!!state.session.follow} onChange={(e) => update((s) => ({ ...s, session: s.session ? { ...s.session, follow: e.target.checked } : null }))} />
+                Студенти автоматично переходять на модуль, який відкриваю я
+              </label>
+              <ConfirmBtn size="sm" className="ml-auto" confirmText="Завершити? Натисніть ще раз" onConfirm={() => { patch({ session: null }); toast('Онлайн-заняття завершено на цьому пристрої'); }}>
+                Завершити онлайн-заняття
+              </ConfirmBtn>
+            </div>
+            {sync.members.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {sync.members.map((m) => (
+                  <Tag key={m.id} tone="good">{m.name} · {m.team}</Tag>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-slate-500">
+              Публічний безкоштовний сервер без гарантій доступності; дані видно тим, хто знає код. Просіть студентів вводити лише ім’я. Якщо зв’язок зникне — студенти можуть продовжити самостійно й надіслати код результату.
+            </p>
+          </div>
+        )}
+      </Panel>
 
       <div className="grid gap-6 xl:grid-cols-2">
         <Panel title="Етапи заняття · 90 хв" icon={<Layers className="h-4 w-4 text-signal" />}>
@@ -252,7 +316,7 @@ export default function TeacherPanel({ onShowLesson }: { onShowLesson: () => voi
                   {state.showAnswers ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   {state.showAnswers ? 'Сховати правильні відповіді' : 'Показати правильні відповіді'}
                 </Btn>
-                <span className="text-xs text-slate-500">Підсвічує правильні варіанти в усіх завданнях на цьому екрані.</span>
+                <span className="text-xs text-slate-500">Підсвічує правильні варіанти в усіх завданнях на цьому екрані, а в онлайн-занятті — і в студентів. Вмикайте для розбору після відповідей.</span>
               </div>
               <div className="flex flex-wrap items-center gap-2 border-t border-ink-600/60 pt-3">
                 <span className="text-sm text-slate-300">Симуляція: відкрито {state.pacing === 'teacher' ? state.simRevealed : 3} з 3 ситуацій</span>
@@ -362,7 +426,7 @@ export default function TeacherPanel({ onShowLesson }: { onShowLesson: () => voi
                     <tr key={r.key} className="border-t border-ink-600/60">
                       <td className="py-2 pr-2">
                         <div className="font-semibold text-white">{r.name}</div>
-                        <div className="text-xs text-slate-500">гр. {r.group || '—'} {r.local && '· цей пристрій'}</div>
+                        <div className="text-xs text-slate-500">{r.key.startsWith('team:') ? r.group : `гр. ${r.group || '—'}`} {r.local && '· цей пристрій'}</div>
                       </td>
                       <td className="py-2 pr-2 text-slate-300">{r.team}</td>
                       {SCORED.map((k) => {

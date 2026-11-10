@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, ChevronRight, Power, Radio, Target, UserRound, Users, Wifi, WifiOff, Zap } from 'lucide-react';
 import { useApp } from '../lib/store';
+import { codeFromUrl, makeId, normCode, teamSlug } from '../lib/sync';
 import { Btn, Input, ModuleHeader, Panel, Select, Tag, cx } from '../components/ui';
 
 const BOOT_LINES = [
@@ -14,7 +15,7 @@ const BOOT_LINES = [
 ];
 
 export default function M1Intro() {
-  const { state, patch, update, go } = useApp();
+  const { state, update, go } = useApp();
   const [phase, setPhase] = useState<'cover' | 'boot' | 'brief'>(state.started ? 'brief' : 'cover');
   const [lines, setLines] = useState(state.started ? BOOT_LINES.length : 0);
 
@@ -29,6 +30,7 @@ export default function M1Intro() {
   }, [phase, lines]);
 
   const p = state.profile;
+  const [code, setCode] = useState(state.session?.code ?? codeFromUrl());
   const setP = (k: keyof typeof p, v: string) => update((s) => ({ ...s, profile: { ...s.profile, [k]: v } }));
   const ready = p.name.trim().length >= 2 && p.group && p.team.trim().length >= 2;
 
@@ -160,16 +162,37 @@ export default function M1Intro() {
               />
             </label>
             <Input label="Позивний команди" value={p.team} onChange={(v) => setP('team', v)} placeholder="Напр., «Пакет-7»" max={40} />
-            <p className="text-xs text-slate-500">Позивний — умовна назва команди. Учасники однієї команди вводять однаковий позивний, щоб викладач бачив загальний рейтинг.</p>
+            <p className="text-xs text-slate-500">Позивний — умовна назва команди. Учасники однієї команди вводять <b>однаковий</b> позивний.</p>
+            {state.role !== 'teacher' && (
+              <div className="rounded-lg border border-info/40 bg-info/5 p-3">
+                <Input label="Код онлайн-заняття (від викладача)" value={code} onChange={(v) => setCode(normCode(v))} placeholder="Напр., K7M2QX" max={12} />
+                <p className="mt-1.5 text-xs text-slate-400">
+                  З кодом ви працюєте <b className="text-slate-200">разом із командою наживо</b>: спільні відповіді, спільний протокол, викладач бачить прогрес. Без коду — самостійне проходження.
+                  Вводьте лише ім’я (без прізвища): онлайн-режим використовує публічний сервер.
+                </p>
+              </div>
+            )}
             <Btn
               className="w-full"
               disabled={!ready}
               onClick={() => {
-                patch({ started: true });
+                const c = normCode(code);
+                if (c && state.role !== 'teacher') {
+                  update((s) => ({
+                    ...s,
+                    started: true,
+                    session: { code: c, teamId: teamSlug(s.profile.team), clientId: s.session?.clientId ?? makeId() },
+                    // спільний стан команди надійде з сервера
+                    answers: s.session?.code === c ? s.answers : {},
+                    results: s.session?.code === c ? s.results : {},
+                  }));
+                } else {
+                  update((s) => ({ ...s, started: true, session: s.role === 'teacher' ? s.session : null }));
+                }
                 go('m2');
               }}
             >
-              Підтвердити й перейти до модуля 2 <ChevronRight className="h-4 w-4" />
+              {normCode(code) && state.role !== 'teacher' ? 'Приєднатися до команди' : 'Підтвердити й перейти до модуля 2'} <ChevronRight className="h-4 w-4" />
             </Btn>
             {!ready && <p className="text-xs text-slate-500">Заповніть ім’я, групу та позивний команди.</p>}
           </div>

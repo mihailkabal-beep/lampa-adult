@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FlaskConical, GraduationCap, Info, LogOut, MonitorPlay, Radio, Settings2, UserRound } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Users, Wifi, WifiOff, FlaskConical, GraduationCap, Info, LogOut, MonitorPlay, Radio, Settings2, UserRound } from 'lucide-react';
 import { moduleProgress, moduleScores, total, useApp } from './lib/store';
+import { codeFromUrl, useSync } from './lib/sync';
 import { MODULES } from './lib/config';
 import type { ModuleId } from './lib/types';
 import { Btn, Tag, cx } from './components/ui';
@@ -48,6 +49,14 @@ function Landing() {
         ОПЕРАЦІЯ: <span className="text-signal">ЄДИНИЙ КАНАЛ</span>
       </h1>
       <p className="mt-3 max-w-2xl text-slate-300">Основи національного спротиву · «Індивідуальна тактика, сигнали та інформаційна взаємодія малої групи» · F3 «Комп’ютерні науки»</p>
+      {codeFromUrl() && (
+        <div className="mt-8 flex flex-wrap items-center gap-3 rounded-xl border border-signal/50 bg-signal/10 p-4">
+          <Users className="h-5 w-5 text-signal" />
+          <span className="text-slate-100">
+            Вас запрошено до онлайн-заняття <b className="font-mono text-signal">{codeFromUrl()}</b>. Оберіть «Я студент».
+          </span>
+        </div>
+      )}
       <div className="mt-10 grid gap-4 md:grid-cols-3">
         {opts.map((o) => {
           const Icon = o.icon;
@@ -68,9 +77,33 @@ function Landing() {
       <div className="mt-8 flex gap-2 rounded-lg border border-info/30 bg-info/5 p-3 text-xs text-slate-400">
         <Info className="h-4 w-4 shrink-0 text-info" />
         <span>
-          Реєстрація не потрібна. Прогрес зберігається лише в цьому браузері (localStorage). Синхронізації між пристроями немає: результати студентів передаються викладачу файлом.
+          Реєстрація не потрібна. Два режими: онлайн-заняття за кодом від викладача (команди працюють разом наживо через публічний сервер) або самостійне проходження (усе зберігається лише в цьому браузері, результат передається кодом чи файлом).
         </span>
       </div>
+    </div>
+  );
+}
+
+function LiveChip() {
+  const { state } = useApp();
+  const { status, members } = useSync();
+  if (!state.session) return null;
+  const on = status === 'online';
+  const names = members.map((m) => m.name).join(', ');
+  const isTeacher = state.role === 'teacher';
+  return (
+    <div
+      className={cx('flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 font-mono text-xs', on ? 'border-signal/60 text-signal' : 'border-warn/60 text-warn')}
+      title={on ? `Онлайн · ${isTeacher ? 'учасників' : 'у команді'}: ${names || '—'}` : 'Підключення до сервера…'}
+    >
+      {on ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4 animate-blink" />}
+      <span className="hidden sm:inline">{state.session.code}</span>
+      {on && (
+        <span className="flex items-center gap-1">
+          <Users className="h-3.5 w-3.5" />
+          {members.length}
+        </span>
+      )}
     </div>
   );
 }
@@ -100,6 +133,7 @@ function Header({ view, setView }: { view: 'lesson' | 'teacher'; setView: (v: 'l
           Канал: {stressed ? 'під загрозою' : 'стабільний'}
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <LiveChip />
           <TimerBadge t={state.timer} />
           <div className="rounded-lg border border-ink-600 px-2.5 py-1.5 font-mono text-sm text-white" title="Набрані бали">
             {sum}
@@ -117,7 +151,7 @@ function Header({ view, setView }: { view: 'lesson' | 'teacher'; setView: (v: 'l
             title="Змінити режим"
             aria-label="Змінити режим"
             onClick={() => {
-              patch({ role: null, demo: false, card: null });
+              patch({ role: null, demo: false, card: null, session: null });
               setView('lesson');
             }}
           >
@@ -186,7 +220,7 @@ export default function App() {
         {view === 'teacher' && state.role === 'teacher' ? <TeacherPanel onShowLesson={() => setView('lesson')} /> : <View key={state.current} />}
       </main>
       <footer className="no-print border-t border-ink-700 px-4 py-5 text-center text-xs text-slate-500">
-        Навчальна цивільна симуляція · Дані зберігаються лише на цьому пристрої · Синхронізація між пристроями не підтримується
+        {state.session ? `Навчальна цивільна симуляція · Онлайн-заняття ${state.session.code}: спільний стан команди передається через публічний сервер — вводьте лише ім’я` : 'Навчальна цивільна симуляція · Самостійний режим: дані зберігаються лише на цьому пристрої'}
       </footer>
       <SituationOverlay />
       <Toaster />
